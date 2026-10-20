@@ -56,7 +56,8 @@ extern "C" void app_step(void)
     const std::uint32_t now = HAL_GetTick();
     while (g_lastTick != now) {
         g_lastTick++;
-        g_app.tick(g_lastTick);
+        const bool pressed = HAL_GPIO_ReadPin(BTN_GPIO_Port, BTN_Pin) == GPIO_PIN_RESET;  // кнопка на GND
+        g_app.tick(g_lastTick, pressed);
     }
 
     __WFI();  // спим до прерывания; SysTick будит каждую 1 мс

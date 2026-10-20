@@ -7,7 +7,8 @@
 
 namespace logic {
 
-App::App(AppIo& io) : io_(io), led_(cfg::kLedOnMs, cfg::kLedOffMs)
+App::App(AppIo& io)
+    : io_(io), button_(cfg::kDebounceMs), led_(cfg::kLedOnMs, cfg::kLedOffMs)
 {
 }
 
@@ -39,8 +40,23 @@ void App::start(std::uint32_t now)
     say("LED ON");
 }
 
-void App::tick(std::uint32_t now)
+void App::tick(std::uint32_t now, bool buttonPressed)
 {
+    switch (button_.update(buttonPressed, now)) {
+    case Debouncer::Event::Pressed:
+        pressedAt_ = now;
+        say("BUTTON ON");
+        toggleLed(now);  // п.2А: по срабатыванию кнопки — на противоположное
+        break;
+    case Debouncer::Event::Released:
+        say("BUTTON OFF");
+        // Оба фронта задержаны фильтром на одинаковые 10 мс — разность точная.
+        say("BUTTON TIME %lu", static_cast<unsigned long>(now - pressedAt_));
+        break;
+    case Debouncer::Event::None:
+        break;
+    }
+
     // п.1: смена состояния по таймеру.
     if (led_.expired(now)) {
         toggleLed(now);

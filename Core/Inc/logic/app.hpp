@@ -6,6 +6,7 @@
 
 #include <cstdint>
 
+#include "logic/debouncer.hpp"
 #include "logic/led_timer.hpp"
 
 namespace logic {
@@ -25,16 +26,19 @@ public:
     explicit App(AppIo& io);
 
     void start(std::uint32_t now);  // LED ON + "LED ON" (п.1А)
-    void tick(std::uint32_t now);   // вызывать каждую миллисекунду
+    void tick(std::uint32_t now, bool buttonPressed);  // вызывать каждую миллисекунду
 
 private:
     // printf-форматирование + "\r\n". Атрибут — чтобы компилятор проверял
-    // соответствие %lu/%ld аргументам.
+    // соответствие %lu/%ld аргументам (на ARM uint32_t — это unsigned long).
     void say(const char* format, ...) __attribute__((format(printf, 2, 3)));
     void toggleLed(std::uint32_t now);
 
-    AppIo&   io_;
-    LedTimer led_;
+    AppIo&    io_;
+    Debouncer button_;
+    LedTimer  led_;
+
+    std::uint32_t pressedAt_ = 0;
 };
 
 }  // namespace logic
