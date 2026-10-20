@@ -38,7 +38,9 @@ private:
     Debouncer button_;
     LedTimer  led_;
 
-    std::uint32_t pressedAt_ = 0;
+    std::uint32_t clicks_          = 0;      // п.2В: номер клика, считаем по нажатиям
+    bool          toggleOnRelease_ = false;  // текущий клик переключает на отпускании
+    std::uint32_t pressedAt_       = 0;
 };
 
 }  // namespace logic

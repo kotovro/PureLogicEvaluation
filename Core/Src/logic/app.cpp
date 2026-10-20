@@ -43,15 +43,26 @@ void App::start(std::uint32_t now)
 void App::tick(std::uint32_t now, bool buttonPressed)
 {
     switch (button_.update(buttonPressed, now)) {
-    case Debouncer::Event::Pressed:
+    case Debouncer::Event::Pressed: {
         pressedAt_ = now;
         say("BUTTON ON");
-        toggleLed(now);  // п.2А: по срабатыванию кнопки — на противоположное
+        // п.2В: клики 1 и 2 переключают на нажатии, 3 и 4 — на отпускании, и снова.
+        const bool onPress = (clicks_ % 4) < 2;
+        clicks_++;
+        toggleOnRelease_ = !onPress;
+        if (onPress) {
+            toggleLed(now);
+        }
         break;
+    }
     case Debouncer::Event::Released:
         say("BUTTON OFF");
         // Оба фронта задержаны фильтром на одинаковые 10 мс — разность точная.
         say("BUTTON TIME %lu", static_cast<unsigned long>(now - pressedAt_));
+        if (toggleOnRelease_) {
+            toggleOnRelease_ = false;
+            toggleLed(now);
+        }
         break;
     case Debouncer::Event::None:
         break;
