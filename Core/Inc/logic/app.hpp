@@ -6,6 +6,7 @@
 
 #include <cstdint>
 
+#include "logic/command_parser.hpp"
 #include "logic/debouncer.hpp"
 #include "logic/led_timer.hpp"
 
@@ -25,8 +26,9 @@ class App {
 public:
     explicit App(AppIo& io);
 
-    void start(std::uint32_t now);  // LED ON + "LED ON" (п.1А)
+    void start(std::uint32_t now);                     // LED ON + "LED ON" (п.1А)
     void tick(std::uint32_t now, bool buttonPressed);  // вызывать каждую миллисекунду
+    void onByte(std::uint8_t ch, bool rxError);        // принятый по UART байт
 
 private:
     // printf-форматирование + "\r\n". Атрибут — чтобы компилятор проверял
@@ -34,9 +36,10 @@ private:
     void say(const char* format, ...) __attribute__((format(printf, 2, 3)));
     void toggleLed(std::uint32_t now);
 
-    AppIo&    io_;
-    Debouncer button_;
-    LedTimer  led_;
+    AppIo&        io_;
+    Debouncer     button_;
+    LedTimer      led_;
+    CommandParser parser_;
 
     std::uint32_t clicks_          = 0;      // п.2В: номер клика, считаем по нажатиям
     bool          toggleOnRelease_ = false;  // текущий клик переключает на отпускании

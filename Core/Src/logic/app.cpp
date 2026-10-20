@@ -74,4 +74,28 @@ void App::tick(std::uint32_t now, bool buttonPressed)
     }
 }
 
+void App::onByte(std::uint8_t ch, bool rxError)
+{
+    const Command cmd = parser_.feed(ch, rxError);
+    switch (cmd.type) {
+    case Command::Type::Query:  // п.5А
+        say("LED %luL", static_cast<unsigned long>(led_.onMs()));
+        say("LED %luD", static_cast<unsigned long>(led_.offMs()));
+        break;
+    case Command::Type::SetOn:  // п.5Б: применится со следующей смены состояния
+        led_.setOnMs(cmd.value);
+        say("LED %s OK", cmd.text);
+        break;
+    case Command::Type::SetOff:  // п.5В
+        led_.setOffMs(cmd.value);
+        say("LED %s OK", cmd.text);
+        break;
+    case Command::Type::Error:  // п.5Д
+        say("ERROR");
+        break;
+    case Command::Type::None:
+        break;
+    }
+}
+
 }  // namespace logic
