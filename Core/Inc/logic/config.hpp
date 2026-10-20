@@ -13,6 +13,8 @@ constexpr std::uint32_t kLedMsMax = 9999;
 
 constexpr std::uint32_t kDebounceMs = 10;  // п.2Б: реакция 10-20 мс при требовании <= 50
 
+constexpr unsigned kAdcWindow = 10;  // п.4Б: среднее по 10 измерениям (блоками)
+
 }  // namespace cfg
 
 #endif
