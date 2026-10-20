@@ -8,6 +8,7 @@
 
 #include "logic/app.hpp"
 #include "logic/command_parser.hpp"
+#include "logic/sensors.hpp"
 
 using namespace logic;
 
@@ -40,6 +41,12 @@ struct Board {
         while (now < t) {
             now++;
             app.tick(now, button);
+        }
+    }
+    void send(const char* s)
+    {
+        for (; *s != '\0'; ++s) {
+            app.onByte(static_cast<std::uint8_t>(*s), false);
         }
     }
 
@@ -147,12 +154,69 @@ static void test_parser()
     CHECK(p.feed('?', true).type == Command::Type::Error);
 }
 
+// п.5: ответы на команды и применение после смены состояния.
+static void test_commands()
+{
+    Board b;
+    b.runTo(100);
+    b.io.out.clear();
+    b.send("?");
+    CHECK(b.io.out == "LED 4000L\r\nLED 6000D\r\n");
+
+    b.io.out.clear();
+    b.send("3500L\r\n5500D");
+    CHECK(b.io.out == "LED 3500L OK\r\nLED 5500D OK\r\n");
+
+    b.io.out.clear();
+    b.runTo(4000 + 5500 + 3500);  // текущий ON доигрывает 4000, дальше новые времена
+    CHECK(b.io.out ==
+          "LED ON TIME 4000\r\nLED OFF\r\n"
+          "LED OFF TIME 5500\r\nLED ON\r\n"
+          "LED ON TIME 3500\r\nLED OFF\r\n");
+
+    b.io.out.clear();  // ошибка: ERROR, заданные времена не меняются
+    b.send("499L?");
+    CHECK(b.io.out == "ERROR\r\nLED 3500L\r\nLED 5500D\r\n");
+
+    b.io.out.clear();  // байт с ошибкой чётности
+    b.app.onByte('?', true);
+    CHECK(b.io.out == "ERROR\r\n");
+}
+
+static void test_sensor_math()
+{
+    const SensorCal cal{1500, 950, 1200};
+    AdcAverager     avg;
+
+    for (int i = 0; i < 9; i++) avg.push(1500, 950);
+    CHECK(!convert(avg.result(), cal).valid);  // 9 измерений — блок ещё не набран
+
+    avg.push(1500, 950);  // 10-е: точка калибровки 30 °C, 3.3 В
+    Reading r = convert(avg.result(), cal);
+    CHECK(r.valid && r.vddaMv == 3300 && r.tempC == 30);
+
+    // VDDA = 3.0 В: VREFINT = 1500*3300/3000 = 1650; датчик при 70 °C даёт код
+    // 1075 на 3.3 В, т.е. 1182.5 на 3.0 В. Без компенсации VDDA было бы ~100 °C.
+    for (int i = 0; i < 10; i++) avg.push(1650, (i % 2) ? 1183 : 1182);
+    r = convert(avg.result(), cal);
+    CHECK(r.valid && r.vddaMv == 3000 && r.tempC == 70);
+
+    // Неполный следующий блок результат не меняет.
+    for (int i = 0; i < 5; i++) avg.push(1000, 100);
+    r = convert(avg.result(), cal);
+    CHECK(r.valid && r.vddaMv == 3000 && r.tempC == 70);
+
+    CHECK(!convert(avg.result(), SensorCal{0xFFFF, 0xFFFF, 0xFFFF}).valid);  // пустые калибровки
+}
+
 int main()
 {
     test_blink();
     test_spec_example();
     test_click_sequence();
     test_parser();
+    test_commands();
+    test_sensor_math();
     std::printf(g_failed == 0 ? "All tests passed\n" : "%d check(s) failed\n", g_failed);
     return g_failed == 0 ? 0 : 1;
 }
