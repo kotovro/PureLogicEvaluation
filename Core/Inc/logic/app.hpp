@@ -9,14 +9,16 @@
 #include "logic/command_parser.hpp"
 #include "logic/debouncer.hpp"
 #include "logic/led_timer.hpp"
+#include "logic/sensors.hpp"
 
 namespace logic {
 
 // Связь логики с железом. В прошивке — BoardIo, в тестах — FakeIo.
 class AppIo {
 public:
-    virtual void setLed(bool on)         = 0;
-    virtual void print(const char* text) = 0;  // текст уходит в UART как есть
+    virtual void    setLed(bool on)         = 0;
+    virtual void    print(const char* text) = 0;  // текст уходит в UART как есть
+    virtual Reading readSensors()           = 0;
 
 protected:
     ~AppIo() = default;  // удалять через AppIo* некому: кучи нет
@@ -35,6 +37,7 @@ private:
     // соответствие %lu/%ld аргументам (на ARM uint32_t — это unsigned long).
     void say(const char* format, ...) __attribute__((format(printf, 2, 3)));
     void toggleLed(std::uint32_t now);
+    void reportSensors(bool tempFirst);
 
     AppIo&        io_;
     Debouncer     button_;
@@ -44,6 +47,7 @@ private:
     std::uint32_t clicks_          = 0;      // п.2В: номер клика, считаем по нажатиям
     bool          toggleOnRelease_ = false;  // текущий клик переключает на отпускании
     std::uint32_t pressedAt_       = 0;
+    bool          longReported_    = false;  // TEMP/VCC за это нажатие уже выведены
 };
 
 }  // namespace logic

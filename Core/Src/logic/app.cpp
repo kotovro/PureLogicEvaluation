@@ -29,8 +29,27 @@ void App::toggleLed(std::uint32_t now)
     const unsigned long elapsed = led_.toggle(now);
 
     io_.setLed(led_.isOn());  // сначала светодиод — от этого момента считается реакция
-    say("LED %s TIME %lu", wasOn ? "ON" : "OFF", elapsed);  // п.3
+    say("LED %s TIME %lu", wasOn ? "ON" : "OFF", elapsed);
     say("LED %s", led_.isOn() ? "ON" : "OFF");
+}
+
+void App::reportSensors(bool tempFirst)
+{
+    const Reading r = io_.readSensors();
+    if (!r.valid) {
+        say("ERROR");  // первые ~133 мс после старта блок из 10 измерений ещё не набран
+        return;
+    }
+    const long temp = r.tempC;
+    const long vcc  = r.vddaMv;
+    // В ТЗ порядок разный: п.4Г — TEMP, VCC; п.5А — VCC, TEMP.
+    if (tempFirst) {
+        say("TEMP %ld", temp);
+        say("VCC %ld", vcc);
+    } else {
+        say("VCC %ld", vcc);
+        say("TEMP %ld", temp);
+    }
 }
 
 void App::start(std::uint32_t now)
@@ -44,7 +63,8 @@ void App::tick(std::uint32_t now, bool buttonPressed)
 {
     switch (button_.update(buttonPressed, now)) {
     case Debouncer::Event::Pressed: {
-        pressedAt_ = now;
+        pressedAt_    = now;
+        longReported_ = false;
         say("BUTTON ON");
         // п.2В: клики 1 и 2 переключают на нажатии, 3 и 4 — на отпускании, и снова.
         const bool onPress = (clicks_ % 4) < 2;
@@ -68,6 +88,12 @@ void App::tick(std::uint32_t now, bool buttonPressed)
         break;
     }
 
+    // п.4Г: один раз за нажатие, пока кнопка ещё нажата.
+    if (button_.pressed() && !longReported_ && now - pressedAt_ > cfg::kLongPressMs) {
+        longReported_ = true;
+        reportSensors(true);
+    }
+
     // п.1: смена состояния по таймеру.
     if (led_.expired(now)) {
         toggleLed(now);
@@ -79,6 +105,7 @@ void App::onByte(std::uint8_t ch, bool rxError)
     const Command cmd = parser_.feed(ch, rxError);
     switch (cmd.type) {
     case Command::Type::Query:  // п.5А
+        reportSensors(false);
         say("LED %luL", static_cast<unsigned long>(led_.onMs()));
         say("LED %luD", static_cast<unsigned long>(led_.offMs()));
         break;

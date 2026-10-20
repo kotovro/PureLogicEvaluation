@@ -1,15 +1,17 @@
 // Связь logic::App с железом через HAL. Единственный файл, который знает
 // и про HAL, и про логику.
 //
-// Модель: суперцикл + прерывания. Прерывания только складывают данные,
-// вся логика — в основном цикле.
+// Модель: суперцикл + прерывания. Прерывания только складывают данные
+// (байты UART, измерения АЦП), вся логика — в основном цикле.
 #include "app_main.h"
 
 #include <atomic>
 #include <cstring>
 
+#include "adc.h"
 #include "logic/app.hpp"
 #include "main.h"
+#include "tim.h"
 #include "usart.h"
 
 namespace {
@@ -52,6 +54,11 @@ bool rxPop(RxItem& out)
     return true;
 }
 
+// ---- АЦП: TIM2 75 Гц -> ADC1 injected [VREFINT, датчик] -> прерывание -------
+
+logic::AdcAverager g_adc;  // пишет прерывание, читает основной цикл с запретом прерываний
+logic::SensorCal  g_cal;
+
 // ---- реализация AppIo поверх HAL ----------------------------------------------
 
 class BoardIo : public logic::AppIo {
@@ -65,9 +72,20 @@ public:
     void print(const char* text) override
     {
         // Блокирующий вывод: строка ~20 символов на 115200 8E1 — ~2 мс.
-        // Пропущенные за это время миллисекунды основной цикл догоняет.
+        // Приём при этом идёт по прерываниям, а пропущенные миллисекунды
+        // основной цикл догоняет, так что таймингам это не мешает.
         HAL_UART_Transmit(&huart1, reinterpret_cast<const std::uint8_t*>(text),
                           static_cast<std::uint16_t>(std::strlen(text)), 100);
+    }
+
+    logic::Reading readSensors() override
+    {
+        // Две суммы должны быть из одного блока. Без запрета прерываний АЦП
+        // может закончить блок между чтением первой и второй суммы.
+        __disable_irq();
+        const logic::AdcSums sums = g_adc.result();
+        __enable_irq();
+        return logic::convert(sums, g_cal);
     }
 };
 
@@ -84,7 +102,12 @@ extern "C" void app_init(void)
     // Основной цикл спит в WFI; без этого отладчик теряет связь с ядром во сне.
     HAL_DBGMCU_EnableDBGSleepMode();
 
-    if (HAL_UART_Receive_IT(&huart1, &g_rxByte, 1) != HAL_OK) {
+    // Заводские калибровки (адреса — макросы из stm32f4xx_ll_adc.h).
+    g_cal = logic::SensorCal{*VREFINT_CAL_ADDR, *TEMPSENSOR_CAL1_ADDR, *TEMPSENSOR_CAL2_ADDR};
+
+    if (HAL_UART_Receive_IT(&huart1, &g_rxByte, 1) != HAL_OK ||
+        HAL_ADCEx_InjectedStart_IT(&hadc1) != HAL_OK ||  // сначала АЦП: готов к первому TRGO
+        HAL_TIM_Base_Start(&htim2) != HAL_OK) {          // таймер сам запускает АЦП 75 раз/с
         Error_Handler();
     }
 
@@ -99,8 +122,8 @@ extern "C" void app_step(void)
         g_app.onByte(rx.ch, rx.error);
     }
 
-    // Логика рассчитана на шаг 1 мс. Если итерация задержалась, вызываем
-    // tick() за каждую пропущенную миллисекунду.
+    // Логика рассчитана на шаг 1 мс. Если итерация задержалась (например, на
+    // выводе в UART), вызываем tick() за каждую пропущенную миллисекунду.
     const std::uint32_t now = HAL_GetTick();
     while (g_lastTick != now) {
         g_lastTick++;
@@ -131,5 +154,14 @@ extern "C" void HAL_UART_ErrorCallback(UART_HandleTypeDef* huart)
     if (huart->Instance == USART1 && huart->RxState == HAL_UART_STATE_READY) {
         rxPush(0, true);
         rxStart();
+    }
+}
+
+extern "C" void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+    if (hadc->Instance == ADC1) {
+        // Rank 1 = VREFINT, Rank 2 = датчик температуры (как в CubeMX).
+        g_adc.push(static_cast<std::uint16_t>(HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_1)),
+                   static_cast<std::uint16_t>(HAL_ADCEx_InjectedGetValue(hadc, ADC_INJECTED_RANK_2)));
     }
 }
