@@ -25,8 +25,9 @@ static int g_failed = 0;
 // Подмена железа.
 class FakeIo : public AppIo {
 public:
-    void setLed(bool on) override { led = on; }
-    void print(const char* text) override { out += text; }
+    void    setLed(bool on) override { led = on; }
+    void    print(const char* text) override { out += text; }
+    Reading readSensors() override { return Reading{true, 74, 3402}; }  // числа из примера п.4Г
 
     bool        led = false;
     std::string out;
@@ -154,6 +155,22 @@ static void test_parser()
     CHECK(p.feed('?', true).type == Command::Type::Error);
 }
 
+// п.4Г: TEMP/VCC один раз, когда удержание превысило 500 мс.
+static void test_long_press()
+{
+    Board b;
+    b.runTo(999);
+    b.button = true;  // фильтр примет нажатие в 1010
+    b.runTo(1510);
+    CHECK(b.io.out.find("TEMP") == std::string::npos);  // ровно 500 — ещё нет
+    b.io.out.clear();
+    b.runTo(1511);
+    CHECK(b.io.out == "TEMP 74\r\nVCC 3402\r\n");
+    b.io.out.clear();
+    b.runTo(3000);
+    CHECK(b.io.out.find("TEMP") == std::string::npos);  // повторно не выводится
+}
+
 // п.5: ответы на команды и применение после смены состояния.
 static void test_commands()
 {
@@ -161,7 +178,7 @@ static void test_commands()
     b.runTo(100);
     b.io.out.clear();
     b.send("?");
-    CHECK(b.io.out == "LED 4000L\r\nLED 6000D\r\n");
+    CHECK(b.io.out == "VCC 3402\r\nTEMP 74\r\nLED 4000L\r\nLED 6000D\r\n");
 
     b.io.out.clear();
     b.send("3500L\r\n5500D");
@@ -176,7 +193,7 @@ static void test_commands()
 
     b.io.out.clear();  // ошибка: ERROR, заданные времена не меняются
     b.send("499L?");
-    CHECK(b.io.out == "ERROR\r\nLED 3500L\r\nLED 5500D\r\n");
+    CHECK(b.io.out == "ERROR\r\nVCC 3402\r\nTEMP 74\r\nLED 3500L\r\nLED 5500D\r\n");
 
     b.io.out.clear();  // байт с ошибкой чётности
     b.app.onByte('?', true);
@@ -214,6 +231,7 @@ int main()
     test_blink();
     test_spec_example();
     test_click_sequence();
+    test_long_press();
     test_parser();
     test_commands();
     test_sensor_math();
