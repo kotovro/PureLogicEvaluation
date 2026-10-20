@@ -6,3 +6,5 @@ Release/
 *.bak
 *.xml
 *~
+tests/tests
+tests/tests.exe
