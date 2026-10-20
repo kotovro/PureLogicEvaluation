@@ -1,16 +1,19 @@
 // Связь logic::App с железом через HAL. Единственный файл, который знает
 // и про HAL, и про логику.
 //
-// Модель: цикл + прерывания. Прерывания только складывают данные,
+// Модель: суперцикл + прерывания. Прерывания только складывают данные,
 // вся логика — в основном цикле.
 #include "app_main.h"
 
+#include <cstring>
+
 #include "logic/app.hpp"
 #include "main.h"
+#include "usart.h"
 
 namespace {
 
-// реализация AppIo поверх HAL
+// ---- реализация AppIo поверх HAL ----------------------------------------------
 
 class BoardIo : public logic::AppIo {
 public:
@@ -18,6 +21,14 @@ public:
     {
         // PC13: светодиод горит при НИЗКОМ уровне.
         HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, on ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    }
+
+    void print(const char* text) override
+    {
+        // Блокирующий вывод: строка ~20 символов на 115200 8E1 — ~2 мс.
+        // Пропущенные за это время миллисекунды основной цикл догоняет.
+        HAL_UART_Transmit(&huart1, reinterpret_cast<const std::uint8_t*>(text),
+                          static_cast<std::uint16_t>(std::strlen(text)), 100);
     }
 };
 
@@ -27,7 +38,7 @@ std::uint32_t g_lastTick = 0;
 
 }  // namespace
 
-// вызовы из main.c
+// ---- вызовы из main.c -----------------------------------------------------------
 
 extern "C" void app_init(void)
 {

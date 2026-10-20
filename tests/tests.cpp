@@ -2,7 +2,7 @@
 //   g++ -std=c++14 -Wall -Wextra -I../Core/Inc ../Core/Src/logic/*.cpp tests.cpp -o tests && ./tests
 //
 // App получает время параметром, а железо — через AppIo, поэтому здесь
-// время моделируется циклом по миллисекундам.
+// время моделируется циклом по миллисекундам, а вывод собирается в строку.
 #include <cstdio>
 #include <string>
 
@@ -24,8 +24,10 @@ static int g_failed = 0;
 class FakeIo : public AppIo {
 public:
     void setLed(bool on) override { led = on; }
+    void print(const char* text) override { out += text; }
 
-    bool led = false;
+    bool        led = false;
+    std::string out;
 };
 
 // Модель платы: App::tick каждую миллисекунду, как в app_step().
@@ -57,6 +59,10 @@ static void test_blink()
     CHECK(!b.io.led);
     b.runTo(10000);
     CHECK(b.io.led);  // 6 с не горит
+    CHECK(b.io.out ==
+          "LED ON\r\n"
+          "LED ON TIME 4000\r\nLED OFF\r\n"
+          "LED OFF TIME 6000\r\nLED ON\r\n");
 }
 
 int main()

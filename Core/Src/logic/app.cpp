@@ -1,5 +1,8 @@
 #include "logic/app.hpp"
 
+#include <cstdarg>
+#include <cstdio>
+
 #include "logic/config.hpp"
 
 namespace logic {
@@ -8,16 +11,32 @@ App::App(AppIo& io) : io_(io), led_(cfg::kLedOnMs, cfg::kLedOffMs)
 {
 }
 
+void App::say(const char* format, ...)
+{
+    char    line[32];
+    va_list args;
+    va_start(args, format);
+    std::vsnprintf(line, sizeof(line), format, args);  // не выйдет за буфер, в худшем случае обрежет
+    va_end(args);
+    io_.print(line);
+    io_.print("\r\n");
+}
+
 void App::toggleLed(std::uint32_t now)
 {
-    led_.toggle(now);
-    io_.setLed(led_.isOn());
+    const bool          wasOn   = led_.isOn();
+    const unsigned long elapsed = led_.toggle(now);
+
+    io_.setLed(led_.isOn());  // сначала светодиод — от этого момента считается реакция
+    say("LED %s TIME %lu", wasOn ? "ON" : "OFF", elapsed);  // п.3
+    say("LED %s", led_.isOn() ? "ON" : "OFF");
 }
 
 void App::start(std::uint32_t now)
 {
     led_.start(now);
     io_.setLed(true);
+    say("LED ON");
 }
 
 void App::tick(std::uint32_t now)

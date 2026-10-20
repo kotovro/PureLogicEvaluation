@@ -13,7 +13,8 @@ namespace logic {
 // Связь логики с железом. В прошивке — BoardIo, в тестах — FakeIo.
 class AppIo {
 public:
-    virtual void setLed(bool on) = 0;
+    virtual void setLed(bool on)         = 0;
+    virtual void print(const char* text) = 0;  // текст уходит в UART как есть
 
 protected:
     ~AppIo() = default;  // удалять через AppIo* некому: кучи нет
@@ -23,10 +24,13 @@ class App {
 public:
     explicit App(AppIo& io);
 
-    void start(std::uint32_t now);  // светодиод включён (п.1А)
+    void start(std::uint32_t now);  // LED ON + "LED ON" (п.1А)
     void tick(std::uint32_t now);   // вызывать каждую миллисекунду
 
 private:
+    // printf-форматирование + "\r\n". Атрибут — чтобы компилятор проверял
+    // соответствие %lu/%ld аргументам.
+    void say(const char* format, ...) __attribute__((format(printf, 2, 3)));
     void toggleLed(std::uint32_t now);
 
     AppIo&   io_;
